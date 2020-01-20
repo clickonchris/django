@@ -13,13 +13,16 @@ from django.db.models.functions import (
 )
 from django.test import SimpleTestCase, TestCase, skipUnlessDBFeature
 
-from .models import Employee
+from .models import Employee, EmployeeClassification
 
 
 @skipUnlessDBFeature('supports_over_clause')
 class WindowFunctionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+
+        EmployeeClassification.objects.create(code='fte', description='Full Time Employee')
+
         Employee.objects.bulk_create([
             Employee(name=e[0], salary=e[1], department=e[2], hire_date=e[3], age=e[4])
             for e in [
@@ -78,6 +81,36 @@ class WindowFunctionTests(TestCase):
             ('Smith', 'Sales', 55000, 55000),
             ('Brown', 'Sales', 53000, 108000),
         ], lambda entry: (entry.name, entry.department, entry.salary, entry.department_sum))
+
+        self.assertEqual(12, qs.count())
+
+    def test_sum_with_count(self):
+        qs = Employee.objects.annotate(department_sum=Window(
+            expression=Sum('salary'),
+            partition_by=F('department'),
+            order_by=['hire_date', 'classification__description'],
+        ))
+
+        # Throws     return self.cursor.execute(sql, params)
+        # psycopg2.errors.GroupingError: column "expressions_window_employeeclassification.description" must appear in the GROUP BY clause or be used in an aggregate function
+        # LINE 1: ...DER BY "expressions_window_employee"."hire_date", "expressio...
+        self.assertEqual(12, qs.count())
+
+        # self.assertQuerysetEqual(qs, [
+        #     ('Jones', 'Accounting', 45000, 45000),
+        #     ('Jenson', 'Accounting', 45000, 90000),
+        #     ('Williams', 'Accounting', 37000, 127000),
+        #     ('Adams', 'Accounting', 50000, 177000),
+        #     ('Wilkinson', 'IT', 60000, 60000),
+        #     ('Moore', 'IT', 34000, 94000),
+        #     ('Miller', 'Management', 100000, 100000),
+        #     ('Johnson', 'Management', 80000, 180000),
+        #     ('Smith', 'Marketing', 38000, 38000),
+        #     ('Johnson', 'Marketing', 40000, 78000),
+        #     ('Smith', 'Sales', 55000, 55000),
+        #     ('Brown', 'Sales', 53000, 108000),
+        # ], lambda entry: (entry.name, entry.department, entry.salary, entry.department_sum))
+
 
     def test_rank(self):
         """
